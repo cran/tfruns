@@ -1,0 +1,8 @@
+6492c5e77709e2f3f5efe17b31807d4d *DESCRIPTION
+bda35a209b025fc5bb7cc9c8da42ced0 *NAMESPACE
+4162f08282b9e290ace9a892e4b70d80 *R/package.R
+4e06a8e221e4d2462ba0e20cf5e2912b *R/runs.R
+c43ead202cc60ccfbc3dc8e53085f1ec *man/run_dir.Rd
+fce2dc91be7bbb012c4ee5517d32dacb *man/write_run_data.Rd
+2fbba2496b24e81994b305f27e01cb97 *tests/testthat.R
+8c7e728d021420ae84ecaf0d03d13982 *tests/testthat/test-runs.R
