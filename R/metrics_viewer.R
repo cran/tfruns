@@ -33,23 +33,13 @@
 view_run_metrics <- function(metrics) {
 
   # create a new temp directory for the viewer's UI/data
-  viewer_dir <- tempfile("keras-metrics")
+  viewer_dir <- tempfile("tfruns-metrics")
   dir.create(viewer_dir, recursive = TRUE)
 
   # create the metrics_viewer instance
   metrics_viewer <- structure(class = "tfruns_metrics_viewer", list(
     viewer_dir = viewer_dir
   ))
-
-  # copy dependencies to the viewer dir
-  lib_dir <- system.file("lib", package = "tfruns")
-  file.copy(from = file.path(lib_dir, c("d3.min.js",
-                                        "c3.min.js", "c3.min.css",
-                                        "metrics-charts.js")),
-            to = viewer_dir)
-  metrics_viewer_html <- system.file("views", "metrics", package = "tfruns")
-  file.copy(from = file.path(metrics_viewer_html, c("metrics.css")),
-            to = viewer_dir)
 
   # write the history
   update_run_metrics(metrics_viewer, metrics)
@@ -70,10 +60,8 @@ update_run_metrics <- function(viewer, metrics) {
 
   # re-write index.html with embedded metrics
   metrics_json <- jsonlite::toJSON(metrics, dataframe = "columns", na = "null")
-  metrics_html <- system.file("views", "metrics", "index.html", package = "tfruns")
-  metrics_html_lines <- readLines(metrics_html, encoding = "UTF-8")
-  metrics_html_lines <- sprintf(metrics_html_lines, metrics_json)
-  writeLines(metrics_html_lines, file.path(viewer$viewer_dir, "index.html"))
+  metrics_html_path <- file.path(viewer$viewer_dir, "index.html")
+  render_view("metrics",metrics_html_path, variables = list(metrics_json = metrics_json))
 
   # write metrics.json for polling
   metrics_json_path <- file.path(viewer$viewer_dir, "metrics.json")
@@ -89,7 +77,7 @@ write_metrics_json <- function(metrics, path) {
 }
 
 # non-rstudio viewer function
-browser_viewer <- function(viewer_dir) {
+browser_viewer <- function(viewer_dir, browser = utils::browseURL) {
 
   function(url) {
     # determine help server port
@@ -103,11 +91,11 @@ browser_viewer <- function(viewer_dir) {
     }
 
     # determine path to history html
-    path <- paste("/session", basename(viewer_dir), "index.html", sep = "/")
+    path <- paste("/session", basename(viewer_dir), basename(url), sep = "/")
 
     # build URL and browse it
     url <- paste0("http://127.0.0.1:", port, path)
-    utils::browseURL(url)
+    browser(url)
   }
 }
 

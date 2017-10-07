@@ -23,7 +23,7 @@ ls_runs <- function(subset = NULL,
   # default empty run list
   run_list <- NULL
 
-  if (file.exists(runs_dir)) {
+  if (utils::file_test("-d", runs_dir)) {
 
     # list runs
     runs <- list_run_dirs(latest_n = latest_n, runs_dir = runs_dir)
@@ -40,10 +40,8 @@ ls_runs <- function(subset = NULL,
 
   if (!is.null(run_list)) {
 
-    # validate order
-    invalid_cols <- setdiff(order, colnames(run_list))
-    if (length(invalid_cols) > 0)
-      stop("Order by column(s) not found: ", paste(invalid_cols, collapse = ", "))
+    # resolve order
+    order <- tidyselect::vars_select(colnames(run_list), !! rlang::enquo(order))
 
     # build order expression
     order_cols <- paste(paste0("run_list$", order), collapse = ",")
@@ -93,7 +91,7 @@ latest_run <- function(runs_dir = getOption("tfruns.runs_dir", "runs")) {
 }
 
 
-#' Summary information for training runs
+#' Summary of training run
 #'
 #' @param run_dir Training run directory or data frame returned from
 #'   [ls_runs()].
@@ -101,6 +99,8 @@ latest_run <- function(runs_dir = getOption("tfruns.runs_dir", "runs")) {
 #' @return Training run summary object with timing, flags, model info, training
 #'   and evaluation metrics, etc. If more than one `run_dir` is passed then
 #'   a list of training run summary objects is returned.
+#'
+#' @seealso [view_run()]
 #'
 #' @export
 run_info <- function(run_dir) {
@@ -128,9 +128,10 @@ print.tfruns_run <- function(x, ...) {
     else
       NULL
   }
-  x$metrics <- summarize("metrics", "(metrics data)")
+  x$metrics <- summarize("metrics", "(metrics data frame)")
   x$model <- summarize("model", "(model summary)")
-  x$source <- summarize("source", "(source archive)")
+  x$source_code <- summarize("source_code", "(source archive)")
+  x$output <- summarize("output", "(script ouptut)")
 
   # print
   str(x, no.list = TRUE)
@@ -163,9 +164,8 @@ list_run_dirs <- function(latest_n = NULL, runs_dir) {
     return(character())
 
   # list directories
-  runs <- list.files(runs_dir,
-                     pattern = "\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2}Z",
-                     full.names = FALSE)
+  runs <- list.files(runs_dir, full.names = FALSE)
+  runs <- runs[utils::file_test("-d", file.path(runs_dir, runs, "tfruns.d"))]
 
   # filter and order
   if (length(runs) > 0) {
@@ -180,6 +180,10 @@ list_run_dirs <- function(latest_n = NULL, runs_dir) {
 
 run_record <- function(run_dir) {
 
+  # validate that it exists
+  if (!utils::file_test("-d", run_dir))
+    stop("Run directory ", run_dir, " does not exist", call. = FALSE)
+
   # compute run name and meta dir
   run <- basename(run_dir)
   meta_dir <- file.path(run_dir, "tfruns.d")
@@ -189,12 +193,20 @@ run_record <- function(run_dir) {
 
   # read all properties into a list
   read_properties <- function() {
-    if (file.exists(props_dir)) {
+    if (!is.null(props_dir) && file.exists(props_dir)) {
       properties <- list.files(props_dir)
       values <- lapply(properties, function(file) {
         paste(readLines(file.path(props_dir, file)), collapse = "\n")
       })
       names(values) <- properties
+
+      # default 'type' and 'context' (data migration)
+      if (is.null(values$type) || identical(values$type, 'local'))
+        values$type <- 'training'
+      if (is.null(values$context))
+        values$context <- 'local'
+
+      # return values
       values
     } else {
       list()
@@ -247,7 +259,8 @@ run_record <- function(run_dir) {
   properties$end <- as_numeric(properties, "end")
   properties$samples <- as_integer(properties, "samples")
   properties$validation_samples <- as_integer(properties, "validation_samples")
-  properties$epochs <- as_integer(properties, "epochs")
+  for (unit in valid_steps_units)
+    properties[[unit]] <- as_integer(properties, unit)
   properties$batch_size <- as_integer(properties, "batch_size")
   properties$completed <- as_logical(properties, "completed")
   properties$learning_rate <- as_numeric(properties, "learning_rate")
@@ -277,11 +290,21 @@ run_record <- function(run_dir) {
     }
   }
 
+  steps_completed_unit <- get_steps_completed_unit(get_steps_unit(columns))
   # epochs completed
-  columns$epochs_completed <- epochs_completed
+  columns[[steps_completed_unit]] <- epochs_completed
 
   # flags
   columns <- append(columns, read_json_columns("flags.json", "flag"))
+
+  # error
+  error_json_path <- file.path(meta_dir, "error.json")
+  if (file.exists(error_json_path)) {
+    error <- jsonlite::read_json(error_json_path, simplifyVector = TRUE)
+    columns[["error_message"]] <- error$message
+    columns[["error_traceback"]] <- paste(error$traceback, collapse = "\n")
+  }
+
 
   # add metrics and source fields
   meta_dir <- meta_dir(run_dir, create = FALSE)
@@ -290,7 +313,7 @@ run_record <- function(run_dir) {
     columns$metrics <- metrics_json
   source_code <- file.path(meta_dir, "source.tar.gz")
   if (file.exists(source_code))
-    columns$source <- source_code
+    columns$source_code <- source_code
 
   # convert to data frame for calls to rbind
   tibble::as_data_frame(columns)
@@ -317,17 +340,22 @@ return_runs <- function(runs, order = NULL) {
   cols <- c(cols, cols_with_prefix("metric"))
   cols <- c(cols, cols_with_prefix("flag"))
   cols <- c(cols, select_cols(c("samples", "validation_samples")))
-  cols <- c(cols, select_cols(c("batch_size", "epochs", "epochs_completed")))
+  cols <- c(cols, select_cols(c("batch_size")))
+  for (unit in valid_steps_units)
+    cols <- c(cols, select_cols(c(unit, paste0(unit, "_completed"))))
   cols <- c(cols, select_cols(c("metrics")))
   cols <- c(cols, select_cols(c("model", "loss_function", "optimizer", "learning_rate")))
   cols <- c(cols, select_cols(c("script", "source")))
   cols <- c(cols, select_cols(c("start", "end", "completed")))
+  cols <- c(cols, select_cols(c("output", "error_message", "error_traceback")))
+  cols <- c(cols, select_cols(c("source_code")))
+  cols <- c(cols, select_cols(c("context", "type")))
   cols <- c(cols, setdiff(colnames(runs), cols))
 
   # promote any ordered columns to the front
-  if (identical(order, "start"))
+  if (identical(unname(order), "start"))
     order <- NULL
-  initial_cols <- c(select_cols(c("type", "run_dir")), order)
+  initial_cols <- c(select_cols(c("run_dir")), order)
   cols <- setdiff(cols, initial_cols)
   cols <- c(initial_cols, cols)
 
@@ -363,5 +391,40 @@ as_run_info <- function(run_record) {
 
   # return with class
   structure(class = "tfruns_run", run_info)
+}
+
+run_source_code <- function(script, run_dir) {
+  source_tarball <- file.path(meta_dir(run_dir), "source.tar.gz")
+  if (file.exists(source_tarball)) {
+    source_tmp_dir <- tempfile()
+    on.exit(unlink(source_tmp_dir, recursive = TRUE))
+    utils::untar(source_tarball, exdir = source_tmp_dir, compressed = TRUE)
+    source_dir <- file.path(source_tmp_dir, "source")
+    source_files <- list.files(source_dir, recursive = TRUE)
+    source_files <- c(script, source_files[!grepl(paste0("^", script, "$"), source_files)])
+    names(source_files) <- source_files
+    lapply(source_files, function(file) {
+      paste(readLines(file.path(source_dir, file)), collapse = "\n")
+    })
+  } else {
+    list()
+  }
+}
+
+valid_steps_units <- c("steps", "epochs")
+
+get_steps_unit <- function(run) {
+  steps_unit <- "steps"
+  for (unit in valid_steps_units) {
+    if (!is.null(run[[unit]])) {
+      steps_unit <- unit
+      break
+    }
+  }
+  steps_unit
+}
+
+get_steps_completed_unit <- function(steps_unit) {
+  paste0(steps_unit, "_completed")
 }
 

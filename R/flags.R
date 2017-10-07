@@ -171,16 +171,14 @@ parse_flags <- function(FLAGS, config, file, arguments) {
 
     # see what the structure of the config file is. if it's all lists at the
     # top level then treat it as a traditional profile-oriented config file
-    if (is.list(config_yaml[["default"]])) {
+    if (all(vapply(config_yaml, is.list, TRUE))) {
       # synthesize default section based on what's already in the config file
       # and the defaults provided inline
       config_yaml[["default"]] <- config::merge(as.vector(FLAGS),
                                                 config_yaml[["default"]])
     } else {
       # synthesize default section from the values at the top level
-      default <- config_yaml
-      config_yaml <- list()
-      config_yaml[["default"]] <- default
+      config_yaml[["default"]] <- config::merge(as.vector(FLAGS), config_yaml)
     }
 
     # now write this to a temp file which we will read with config::get
@@ -231,12 +229,22 @@ parse_flags <- function(FLAGS, config, file, arguments) {
   for (i in 1:length(FLAGS)) {
     name <- names[[i]]
     type <- types[[i]]
-    value <- switch(type,
+    value <- suppressWarnings(switch(type,
       numeric = as.double(flags[[name]]),
       integer = as.integer(flags[[name]]),
       boolean = as.logical(flags[[name]]),
       string = as.character(flags[[name]])
-    )
+    ))
+    # error if length > 1 (no support for parsing lists @ the command line)
+    if (length(value) > 1) {
+      stop('flag "', name, '" has length > 1 (only scalar flag values are supported)')
+    }
+    # error if type coersion fails
+    if (is.na(value)) {
+      value <- paste0("'", flags[[name]], "'")
+      stop("Unable to convert flag '", name, "' with value ", value,
+           " to type ", type, call. = FALSE)
+    }
     FLAGS[[name]] <- value
   }
 

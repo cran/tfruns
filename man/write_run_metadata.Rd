@@ -2,12 +2,9 @@
 % Please edit documentation in R/run_metadata.R
 \name{write_run_metadata}
 \alias{write_run_metadata}
-\alias{write_run_data}
-\title{Write run metadata into the current run directory}
+\title{Write run metadata}
 \usage{
 write_run_metadata(type, data)
-
-write_run_data(type, data)
 }
 \arguments{
 \item{type}{Type of metadata to write. Standard types include "flags",
@@ -23,6 +20,7 @@ that properties will be stored as strings.
 \item "metrics" --- Data frame with training run metrics
 (see \emph{Metrics Data Frame} below).
 \item "evaluation" --- Named list of evaluation metrics.
+\item "error" --- Named list with 'message' and 'traceback'
 \item "<custom>" -- Function used to write the data
 (see \emph{Custom Types} section below).
 }}

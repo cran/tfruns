@@ -1,8 +1,9 @@
 #' Run a training script
 #'
-#' @inheritParams  flags
+#' @inheritParams flags
+#' @inheritParams ls_runs
 #' @param file Path to training script (defaults to "train.R")
-#' @param type Run type (defaults to "local")
+#' @param context Run context (defaults to "local")
 #' @param flags Named character vector with flag values (see [flags()]) or path
 #'   to YAML file containing flag values.
 #' @param properties Named character vector with run properties. Properties are
@@ -10,19 +11,36 @@
 #'   [ls_runs()].
 #' @param run_dir Directory to store run data within
 #' @param echo Print expressions within training script
+#' @param view View the results of the run after training. The default "auto"
+#'   will view the run when executing a top-level (printed) statement in an
+#'   interactive session. Pass `TRUE` or `FALSE` to control whether the view is
+#'   shown explictly.
 #' @param envir The environment in which the script should be evaluated
 #' @param encoding The encoding of the training script; see [file()].
 #'
 #' @return Single row data frame with run flags, metrics, etc.
 #'
+#' @details The training run will by default use a unique new run directory
+#' within the "runs" sub-directory of the current working directory (or to the
+#' value of the `tfruns.runs_dir` R option if specified).
+#'
+#' The directory name will be a timestamp (in GMT time). If a duplicate name is
+#' generated then the function will wait long enough to return a unique one.
+#'
+#' If you want to use an alternate directory to store run data you can either
+#' set the global `tfruns.runs_dir` R option, or you can pass a `run_dir`
+#' explicitly to `training_run()`, optionally using the [unique_run_dir()]
+#' function to generate a timestamp-based directory name.
+#'
 #' @export
 training_run <- function(file = "train.R",
-                         type = "local",
+                         context = "local",
                          config = Sys.getenv("R_CONFIG_ACTIVE", unset = "default"),
                          flags = NULL,
                          properties = NULL,
                          run_dir = NULL,
-                         echo = FALSE,
+                         echo = TRUE,
+                         view = "auto",
                          envir = parent.frame(),
                          encoding = getOption("encoding")) {
 
@@ -32,7 +50,9 @@ training_run <- function(file = "train.R",
 
   # setup run context
   run_dir <- initialize_run(
-    type = type,
+    file = file,
+    type = "training",
+    context = context,
     config = config,
     flags = flags,
     properties = properties,
@@ -42,40 +62,115 @@ training_run <- function(file = "train.R",
   # execute the training run
   do_training_run(file, run_dir, echo = echo, envir = envir, encoding = encoding)
 
-  # return the run invisibly
-  invisible(return_runs(run_record(run_dir)))
+  # check for forced view
+  force_view <- isTRUE(view)
+
+  # result "auto" if necessary
+  if (identical(view, "auto"))
+    view <- interactive()
+
+  # print completed message
+  message('\nRun completed: ', run_dir, '\n')
+
+  # prepare to return the run
+  run_return <- return_runs(run_record(run_dir))
+
+  # force_view means we do the view (i.e. we don't rely on printing)
+  if (force_view) {
+
+    view_run(run_dir)
+    invisible(run_return)
+
+  # regular view means give it a class that will result in a view
+  # when executed as a top-level statement
+  } else if (view) {
+
+    class(run_return) <- c("tfruns_viewed_run", class(run_return))
+    run_return
+
+  # otherwise just return invisibly
+  } else {
+
+    invisible(run_return)
+
+  }
+}
+
+#' @export
+print.tfruns_viewed_run <- function(x, ...) {
+  view_run(x)
 }
 
 
 do_training_run <- function(file, run_dir, echo, envir, encoding) {
 
-  # write script
-  write_run_property("script", file)
+  with_changed_file_copy(getwd(), run_dir, {
 
-  # write begin and end times
-  write_run_property("start", as.double(Sys.time()))
-  on.exit(write_run_property("end", as.double(Sys.time())), add = TRUE)
+    # write script
+    write_run_property("script", basename(file))
 
-  # clear run on exit
-  on.exit(clear_run(), add = TRUE)
+    # write begin and end times
+    write_run_property("start", as.double(Sys.time()))
+    on.exit(write_run_property("end", as.double(Sys.time())), add = TRUE)
 
-  # notify user of run dir
-  message("Using run directory ", run_dir)
+    # clear run on exit
+    on.exit(clear_run(), add = TRUE)
 
-  # perform the run
-  write_run_property("completed", FALSE)
-  withCallingHandlers({
+    # clear TF session on exist
+    on.exit(reset_tf_graph(), add = TRUE)
+
+    # set width for run
+    old_width <- getOption("width")
+    options(width = min(100, old_width))
+    on.exit(options(width = old_width), add = TRUE)
+
+    # sink output
+    properties_dir <- file.path(meta_dir(run_dir), "properties")
+    output_file <- file(file.path(properties_dir, "output"), open = "wt", encoding = "UTF-8")
+    sink(file = output_file, type = "output", split = TRUE)
+    on.exit({ sink(type = "output"); close(output_file); }, add = TRUE)
+
+    # sink plots
+    plots_dir <- file.path(run_dir, "plots")
+    if (!utils::file_test("-d", plots_dir))
+      dir.create(plots_dir, recursive = TRUE)
+    png_args <- list(
+      filename = file.path(plots_dir, "Rplot%03d.png"),
+      width=1200, height=715, res = 192 # ~ golden ratio @ highdpi
+    )
+    if (is_windows() && capabilities("cairo"))  # required to prevent empty plot
+      png_args$type <- "cairo"                  # emitted when type = "windows"
+    do.call(grDevices::png, png_args)
+    dev_number <- grDevices::dev.cur()
+    on.exit(grDevices::dev.off(dev_number), add = TRUE)
+
+    # notify user of run dir
+    message("Using run directory ", run_dir)
+
+    # perform the run
+    write_run_property("completed", FALSE)
+    withCallingHandlers({
       source(file = file, local = envir, echo = echo, encoding = encoding)
       write_run_property("completed", TRUE)
     },
     error = function(e) {
-      write_run_property("error", e$message)
+
+      # write error
+      write_run_metadata("error", list(
+        message = e$message,
+        traceback = capture_stacktrace(sys.calls())
+      ))
+
+      # forward error
       stop(e)
-    }
-  )
+    })
+  })
 }
 
-initialize_run <- function(type = "local",
+
+initialize_run <- function(file,
+                           type = "training",
+                           context = "local",
                            config = Sys.getenv("R_CONFIG_ACTIVE", unset = "default"),
                            flags = NULL,
                            properties = NULL,
@@ -110,14 +205,17 @@ initialize_run <- function(type = "local",
   .globals$run_dir$flags <- flags
   .globals$run_dir$flags_file <- flags_file
 
-  # write type
-  write_run_metadata("properties", list(type = type))
+  # write type and context
+  write_run_metadata("properties", list(
+    type = type,
+    context = context
+  ))
 
   # write properties
   write_run_metadata("properties", properties)
 
   # write source files
-  write_run_metadata("source", getwd())
+  write_run_metadata("source", dirname(file))
 
   # execute any pending writes
   for (name in ls(.globals$run_dir$pending_writes))
@@ -134,5 +232,413 @@ clear_run <- function() {
   .globals$run_dir$flags_file <- NULL
   .globals$run_dir$pending_writes <- new.env(parent = emptyenv())
 }
+
+reset_tf_graph <- function() {
+  tryCatch({
+    if (reticulate::py_module_available("tensorflow")) {
+      tf <- reticulate::import("tensorflow")
+      tf$reset_default_graph()
+      if (reticulate::py_has_attr(tf$contrib, "keras"))
+        tf$contrib$keras$backend$clear_session()
+      else if (reticulate::py_has_attr(tf, "keras"))
+        tf$keras$clear_session()
+    }
+    if (reticulate::py_module_available("keras")) {
+      keras <- reticulate::import("keras")
+      keras$backend$clear_session()
+    }
+  }, error = function(e) {
+    warning("Error occurred resetting tf graph: ", e$message)
+  })
+}
+
+capture_stacktrace <- function(stack) {
+  stack <- stack[-(2:7)]
+  stack <- utils::head(stack, -2)
+  stack <- vapply(stack, function(frame) {
+    frame <- deparse(frame)
+    frame <- paste(frame, collapse = "\n")
+    frame
+  }, FUN.VALUE = "frame")
+  rev(stack)
+}
+
+with_changed_file_copy <- function(training_dir, run_dir, expr) {
+
+  # snapshot the files in the training script directory before training
+  files_before <- utils::fileSnapshot(path = training_dir, recursive = TRUE)
+
+  # copy changed files on exit
+  on.exit({
+    # snapshot the files in the run_dir after training then compute changed files
+    files_after <- utils::fileSnapshot(path = training_dir, recursive = TRUE)
+    changed_files <- utils::changedFiles(files_before, files_after)
+
+    # filter out files within the run_dir
+    changed_files <- c(changed_files$changed, changed_files$added)
+    changed_files <- changed_files[!grepl(basename(run_dir), changed_files)]
+
+    # copy the changed files to the run_dir
+    for (file in changed_files) {
+      dir <- dirname(file)
+      target_dir <- file.path(run_dir, dir)
+      if (!utils::file_test("-d", target_dir))
+        dir.create(target_dir, recursive = TRUE)
+      file.copy(from = file.path(training_dir, file), to = target_dir)
+    }
+  }, add = TRUE)
+
+  # execute the expression
+  force(expr)
+}
+
+
+#' Save a run view as HTML
+#'
+#' The saved view includes summary information (flags, metrics, model
+#' attributes, etc.), plot and console output, and the code used for the run.
+#'
+#' @inheritParams run_info
+#' @param filename Path to save the HTML to. If no `filename` is specified
+#'   then a temporary file is used (the path to the file is returned invisibly).
+#'
+#' @seealso [ls_runs()], [run_info()], [view_run()]
+#'
+#' @import base64enc
+#'
+#' @export
+save_run_view <- function(run_dir = latest_run(), filename = "auto") {
+
+  # verify run_dir
+  if (is.null(run_dir))
+    stop("No runs available in the current directory")
+
+  # get run view data
+  run <- run_info(run_dir)
+  data <- run_view_data(run)
+
+  # generate filename if needed
+  if (identical(filename, "auto"))
+    filename <- viewer_temp_file(paste0("run-", basename(run$run_dir)))
+
+  # save the report
+  save_page("view_run", data = data, filename)
+
+  # return the path saved to
+  invisible(filename)
+}
+
+
+
+#' View a training run
+#'
+#' View metrics and other attributes of a training run.
+#'
+#' @inheritParams run_info
+#' @param viewer Viewer to display training run information within
+#'   (default to an internal page viewer if available, otherwise
+#'   to the R session default web browser).
+#'
+#' @seealso [ls_runs()], [run_info()]
+#'
+#' @import base64enc
+#'
+#' @export
+view_run <- function(run_dir = latest_run(), viewer = getOption("tfruns.viewer")) {
+
+  # verify run_dir
+  if (is.null(run_dir))
+    stop("No runs available in the current directory")
+
+  # generate run report and view it
+  view_page(save_run_view(run_dir), viewer)
+}
+
+#' Save a run comparison as HTML
+#'
+#' @inheritParams save_run_view
+#'
+#' @param runs @param run_dir Character vector of 2 training run directories or
+#'   data frame returned from [ls_runs()] with at least 2 elements.
+#'
+#' @export
+save_run_comparison <- function(runs = ls_runs(latest_n = 2), filename = "auto") {
+
+  # cast to run_info
+  runs <- run_info(runs)
+
+  # verify exactly 2 runs provided
+  if (length(runs) != 2)
+    stop("You must pass at least 2 run directories to compare_runs")
+
+  # generate filename if needed
+  if (identical(filename, "auto")) {
+    filename <- viewer_temp_file(paste("compare-runs",
+                                       basename(runs[[1]]$run_dir),
+                                       basename(runs[[2]]$run_dir),
+                                       sep = "-"))
+  }
+
+  # runs to compare (order least to most recent)
+  if (runs[[1]]$start > runs[[2]]$start) {
+    run_a <- runs[[2]]
+    run_b <- runs[[1]]
+  } else {
+    run_a <- runs[[1]]
+    run_b <- runs[[2]]
+  }
+
+  # get view_data
+  run_a <- run_view_data(run_a)
+  run_b <- run_view_data(run_b)
+
+  # generate diffs
+  diffs <- run_diffs(run_a, run_b)
+
+  # data for view
+  data <- list(run_a = run_a, run_b = run_b, diffs = diffs)
+
+  # save the report
+  save_page("compare_runs", data = data, filename)
+
+  # return the path saved to
+  invisible(filename)
+}
+
+#' Compare training runs
+#'
+#' Render a visual comparison of two training runs. The runs are
+#' displayed with the most recent run on the right and the
+#' earlier run on the left.
+#'
+#' @inheritParams view_run
+#' @inheritParams save_run_comparison
+#'
+#' @export
+compare_runs <- function(runs = ls_runs(latest_n = 2),
+                         viewer = getOption("tfruns.viewer")) {
+
+  # verify runs
+  if (is.null(runs))
+    stop("No runs available in the current directory")
+
+  # save and view
+  view_page(save_run_comparison(runs), viewer)
+}
+
+run_view_data <- function(run) {
+
+  # helper to extract prefaced properties
+  with_preface <- function(preface, strip_preface = TRUE) {
+    preface_pattern <- paste0("^", preface, "_")
+    prefaced <- run[grepl(preface_pattern, names(run))]
+    if (length(prefaced) > 0) {
+      if (strip_preface)
+        names(prefaced) <- sub(preface_pattern, "", names(prefaced))
+      prefaced
+    } else {
+      NULL
+    }
+  }
+
+  # helpers for formatting numbers
+  format_integer <- function(x) {
+    if (!is.null(x))
+      prettyNum(x, mode = "integer", big.mark = ",")
+    else
+      NULL
+  }
+  format_numeric <- function(x, digits = 4) {
+    if (!is.null(x))
+      formatC(x, format='f', digits= digits)
+    else
+      NULL
+  }
+
+  # default some potentially empty sections to null
+  data <- list(
+    history = NULL,
+    model = NULL,
+    metrics = NULL,
+    evaluation = NULL,
+    optimization = NULL,
+    training = NULL,
+    flags = NULL,
+    files = NULL,
+    plots = NULL,
+    output = NULL,
+    error = NULL
+  )
+
+  # run_dir
+  data$run_dir <- run$run_dir
+
+  # attributes
+  script <- basename(run$script)
+  data$attributes <- list(
+    context = run$context,
+    script = script,
+    run_dir = run$run_dir,
+    started = paste(as.POSIXct(run$start, origin="1970-01-01", tz = "GMT"),
+                    "GMT"),
+    time = format(as.POSIXct(as.character(Sys.Date()), tz = "GMT") +
+                    run$end - run$start,
+                  "%H:%M:%S")
+  )
+
+  # metrics
+  metrics <- with_preface("metric")
+  if (!is.null(metrics))
+    data$metrics <- lapply(metrics, format_numeric)
+
+  # evaluation
+  evaluation <- with_preface("eval", strip_preface = FALSE)
+  if (!is.null(evaluation))
+    data$evaluation <- evaluation
+
+  # flags
+  flags <- with_preface("flag")
+  if (!is.null(flags))
+    data$flags <- flags
+
+  # optimization
+  optimization <- list()
+  optimization$loss <- run$loss_function
+  optimization$optimizer <- run$optimizer
+  optimization$lr <- run$learning_rate
+  if (length(optimization) > 0)
+    data$optimization <- optimization
+
+  # training
+
+  # determine the step units
+  steps_unit <- get_steps_unit(run)
+  steps_completed_unit <- get_steps_completed_unit(steps_unit)
+
+  # format the steps
+  if (!is.null(run[[steps_unit]]) && !is.null(run[[steps_completed_unit]])) {
+    if (run[[steps_unit]] > run[[steps_completed_unit]])
+      steps <- paste(format_integer(run[[steps_completed_unit]]),
+                     format_integer(run[[steps_unit]]),
+                     sep = "/")
+    else
+      steps <- format_integer(run[[steps_unit]])
+  } else {
+    steps <- NULL
+  }
+  training <- list()
+  training$samples <- format_integer(run$samples)
+  training$validation_samples <- format_integer(run$validation_samples)
+  training[[steps_unit]] <- steps
+  training$batch_size <- format_integer(run$batch_size)
+  if (length(training) > 0)
+    data$training <- training
+
+  # error
+  if (!is.null(run$error_message)) {
+    data$error <- list(
+      message = run$error_message,
+      traceback = run$error_traceback
+    )
+  }
+
+  # metrics history
+  if (!is.null(run$metrics))
+    data$history <- run$metrics
+
+  # model summary
+  if (!is.null(run$model)) {
+    data$model <- sub("^Model\n", "", run$model)
+    data$model <- sub("^_+\n", "", data$model)
+  }
+
+  # initialize tabs
+  data$tabs <- list(
+    list(href = "#summary", title = "Summary"),
+    list(href = "#output", title = "Output"),
+    list(href = "#code", title = "Code")
+  )
+
+  # determine if we have an output tab (remove it if we don't)
+  data$output_tab <- !is.null(data$error) ||
+    !is.null(data$history) ||
+    !is.null(data$model)
+  if (!data$output_tab)
+    data$tabs[[2]] <- NULL
+
+  # source code
+  data$source_code <- run_source_code(script, run$run_dir)
+
+  # files
+  files <- list.files(run$run_dir, recursive = TRUE)
+  files <- gsub("\\\\", "/", files)
+  files <- files[!grepl("^tfruns.d/", files)]
+  files <- files[!grepl("^plots/", files)]
+  files <- files[!grepl("^logs/", files)]
+  if (length(files) > 0)
+    data$files <- as.list(files)
+
+  # plots
+  plots <- list.files(file.path(run$run_dir, "plots"),
+                      pattern = utils::glob2rx("*.png"),
+                      full.names = TRUE)
+  if (length(plots) > 0) {
+    data$plots <- lapply(plots, function(plot) {
+      base64enc::dataURI(file = plot,
+                         mime = "image/png",
+                         encoding = "base64")
+    })
+  }
+
+  # output
+  if (!is.null(run$output))
+    data$output <- run$output
+
+  # return data
+  data
+}
+
+
+run_diffs <- function(run_a, run_b) {
+
+  diffs <- list()
+
+  # FLAGS
+  run_flags <- function(run) ifelse(is.null(run$flags), "", yaml::as.yaml(run$flags))
+  run_a_flags <- run_flags(run_a)
+  run_b_flags <- run_flags(run_b)
+  if (!identical(run_a_flags, run_b_flags)) {
+    diffs[["FLAGS"]] <- list(
+      run_a = run_a_flags,
+      run_b = run_b_flags
+    )
+  }
+
+  # source code: changes and deletions
+  for (source_file in names(run_a$source_code)) {
+    run_a_source_file <- run_a$source_code[[source_file]]
+    run_b_source_file <- run_b$source_code[[source_file]]
+    if (is.null(run_b_source_file))
+      run_b_source_file <- ""
+    if (!identical(run_a_source_file, run_b_source_file)) {
+      diffs[[source_file]] <- list(
+        run_a = run_a_source_file,
+        run_b = run_b_source_file
+      )
+    }
+  }
+  # source code: additions
+  new_source_files <- setdiff(names(run_b$source_code), names(run_a$source_code))
+  for (source_file in new_source_files) {
+    diffs[[source_file]] <- list(
+      run_a = "",
+      run_b = run_b$source_code[[source_file]]
+    )
+  }
+
+  # return diffs
+  diffs
+}
+
 
 

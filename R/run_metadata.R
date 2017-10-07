@@ -1,6 +1,6 @@
 
 
-#' Write run metadata into the current run directory
+#' Write run metadata
 #'
 #' Record various types of training run metadata This function can be called
 #' even when a run directory isn't active (metadata will only be written if
@@ -19,6 +19,7 @@
 #'   - "metrics" --- Data frame with training run metrics
 #'     (see *Metrics Data Frame* below).
 #'   - "evaluation" --- Named list of evaluation metrics.
+#'   - "error" --- Named list with 'message' and 'traceback'
 #'   - "<custom>" -- Function used to write the data
 #'     (see *Custom Types* section below).
 #'
@@ -63,7 +64,7 @@ write_run_metadata <- function(type, data) {
   }
 
   # simple named list
-  if (type %in% c("flags", "evaluation")) {
+  if (type %in% c("flags", "evaluation", "error")) {
 
     write_fn <- named_list_write_fn(type)
 
@@ -119,7 +120,13 @@ write_run_property <- function(name, value) {
 }
 
 
-#' @rdname write_run_metadata
+#' Write run data (deprecated)
+#'
+#' Deprecated alias for [write_run_metadata()].
+#'
+#' @inheritParams write_run_metadata
+#'
+#' @keywords internal
 #' @export
 write_run_data <- function(type, data) {
   write_run_metadata(paste0("custom", type), data)
@@ -128,38 +135,52 @@ write_run_data <- function(type, data) {
 
 write_source_archive <- function(sources_dir, data_dir, archive) {
 
-  # normalize data_dir since we'll be changing the working dir
+  # normalize paths since we'll be changing the working dir
+  sources_dir <- normalizePath(sources_dir)
   data_dir <- normalizePath(data_dir)
 
-  # enumerate source files
-  files <- list.files(path = sources_dir,
+  # change to sources_dir
+  wd <- getwd()
+  on.exit(setwd(wd), add = TRUE)
+  setwd(sources_dir)
+
+  # enumerate source files. note that we used to do this recursively but ran
+  # into performance issues when script files were in a directory with large
+  # subdirectories. Here's the commit where we backed this out:
+  #  https://github.com/rstudio/tfruns/commit/2dbcac627c82a2ecccecc2ba5ecada61d91255c7
+  # (note that if we bring this back we need to continue ignoring the packrat dir)
+  # the right solution might be to override `source` for the duration of the
+  # run and just track which R scripts are sourced.
+  files <- list.files(path = ".",
                       pattern = utils::glob2rx("*.r"),
-                      recursive = TRUE,
-                      ignore.case = TRUE,
-                      include.dirs = TRUE)
+                      ignore.case = TRUE)
 
   # create temp dir for sources
-  sources_dir <- file.path(tempfile("tfruns-sources"), "source")
-  on.exit(unlink(sources_dir), add = TRUE)
-  dir.create(sources_dir, recursive = TRUE)
+  sources_tmp_dir <- file.path(tempfile("tfruns-sources"), "source")
+  on.exit(unlink(sources_tmp_dir), add = TRUE)
+  dir.create(sources_tmp_dir, recursive = TRUE)
 
   # copy the sources to the temp dir
   for (file in files) {
     dir <- dirname(file)
-    target_dir <- file.path(sources_dir, dir)
+    target_dir <- file.path(sources_tmp_dir, dir)
     if (!utils::file_test("-d", target_dir))
       dir.create(target_dir, recursive = TRUE)
     file.copy(from = file, to = target_dir)
   }
 
   # create the tarball
-  wd <- getwd()
-  on.exit(setwd(wd), add = TRUE)
-  setwd(file.path(sources_dir, ".."))
-  utils::tar(file.path(data_dir, archive),
-             files = "source",
-             compression = "gzip",
-             tar = "internal")
+  # tar and prevent "storing paths of more than 100 bytes is not
+  # portable" warning issued by R
+  setwd(file.path(sources_tmp_dir, ".."))
+  suppressWarnings(
+    utils::tar(
+      file.path(data_dir, archive),
+      files = "source",
+      compression = "gzip",
+      tar = "internal"
+    )
+  )
 }
 
 
