@@ -308,6 +308,10 @@ parse_command_line <- function(arguments) {
     if (!grepl("^--", argument))
       next
 
+    # terminate if we see "--args" (implies passthrough args)
+    if (grepl("^--args$", argument))
+      break
+
     # check to see if an '=' was specified for this argument
     equals_idx <- regexpr("=", argument)
     if (identical(c(equals_idx), -1L)) {

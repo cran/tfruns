@@ -4,7 +4,7 @@
 #' @inheritParams ls_runs
 #' @param file Path to training script (defaults to "train.R")
 #' @param context Run context (defaults to "local")
-#' @param flags Named character vector with flag values (see [flags()]) or path
+#' @param flags Named list with flag values (see [flags()]) or path
 #'   to YAML file containing flag values.
 #' @param properties Named character vector with run properties. Properties are
 #'   additional metadata about the run which will be subsequently available via
@@ -14,7 +14,8 @@
 #' @param view View the results of the run after training. The default "auto"
 #'   will view the run when executing a top-level (printed) statement in an
 #'   interactive session. Pass `TRUE` or `FALSE` to control whether the view is
-#'   shown explictly.
+#'   shown explictly. You can also pass "save" to save a copy of the
+#'   run report at `tfruns.d/view.html`
 #' @param envir The environment in which the script should be evaluated
 #' @param encoding The encoding of the training script; see [file()].
 #'
@@ -44,9 +45,17 @@ training_run <- function(file = "train.R",
                          envir = parent.frame(),
                          encoding = getOption("encoding")) {
 
+  # if file is not specified then see if there is a single R source file
+  # within the current working directory
+  if (missing(file)) {
+    all_r_scripts <- list.files(pattern = utils::glob2rx("*.r"), ignore.case = TRUE)
+    if (length(all_r_scripts) == 1)
+      file <- all_r_scripts
+  }
+
   # verify that the file exists
   if (!file.exists(file))
-    stop("The specified R script '", file, "' does not exist.")
+    stop("The R script '", file, "' does not exist.")
 
   # setup run context
   run_dir <- initialize_run(
@@ -83,10 +92,16 @@ training_run <- function(file = "train.R",
 
   # regular view means give it a class that will result in a view
   # when executed as a top-level statement
-  } else if (view) {
+  } else if (isTRUE(view)) {
 
     class(run_return) <- c("tfruns_viewed_run", class(run_return))
     run_return
+
+  # save a copy of the run view
+  } else if (identical(view, "save")) {
+
+    save_run_view(run_dir, file.path(run_dir, "tfruns.d", "view.html"))
+    invisible(run_return)
 
   # otherwise just return invisibly
   } else {
@@ -95,6 +110,112 @@ training_run <- function(file = "train.R",
 
   }
 }
+
+
+#' Tune hyperparameters using training flags
+#'
+#' Run all combinations of the specifed training flags. The number of
+#' combinations can be reduced by specifying the `sample` parameter, which
+#' will result in a random sample of the flag combinations being run.
+#'
+#' @inheritParams training_run
+#' @inheritParams ls_runs
+#'
+#' @param flags Named list with flag values (multiple values can be
+#'   provided for each flag)
+#' @param sample Sampling rate for flag combinations (defaults to
+#'   running all combinations).
+#' @param confirm Confirm before executing tuning run.
+#'
+#' @return Data frame with summary of all training runs performed
+#'   during tuning.
+#'
+#' @examples \dontrun{
+#' library(tfruns)
+#'
+#' runs <- tuning_run("mnist_mlp.R", flags = list(
+#'   batch_size = c(64, 128),
+#'   dropout1 = c(0.2, 0.3, 0.4),
+#'   dropout2 = c(0.2, 0.3, 0.4)
+#' ))
+#'
+#' runs[order(runs$eval_acc, decreasing = TRUE), ]
+#'
+#' }
+#'
+#' @export
+tuning_run <- function(file = "train.R",
+                       context = "local",
+                       config = Sys.getenv("R_CONFIG_ACTIVE", unset = "default"),
+                       flags = NULL,
+                       sample = NULL,
+                       properties = NULL,
+                       runs_dir = getOption("tfruns.runs_dir", "runs"),
+                       echo = TRUE,
+                       confirm = interactive(),
+                       envir = parent.frame(),
+                       encoding = getOption("encoding")) {
+
+   if (!is.list(flags) || is.null(names(flags)))
+     stop("flags must be specified as a named list")
+
+   # set runs dir if specified
+   old_runs_dir <- getOption("tfruns.runs_dir")
+   options(tfruns.runs_dir = runs_dir)
+   if (!is.null(old_runs_dir))
+     on.exit(options(tfruns.runs_dir = old_runs_dir), add = TRUE)
+
+   # calculate the flag grid
+   flag_grid <- do.call(expand.grid, flags)
+   cat(prettyNum(nrow(flag_grid), big.mark = ","), "total combinations of flags ")
+
+   # sample if requested
+   if (!is.null(sample)) {
+     if (sample >= 1)
+       stop("sample must be a floating point value less than 1")
+     indices <- sample(1:nrow(flag_grid), size = sample * nrow(flag_grid))
+     flag_grid <- flag_grid[indices, , drop = FALSE]
+     cat("(sampled to", prettyNum(nrow(flag_grid), big.mark = ","), "combinations)\n")
+   } else {
+     cat("(use sample parameter to run a random subset)\n")
+   }
+
+   if (confirm) {
+     prompt <- readline("Proceed with tuning run? [Y/n]: ")
+     if (nzchar(prompt) && tolower(prompt) != 'y')
+       return(invisible(NULL))
+   }
+
+   # execute tuning
+   for (i in 1:nrow(flag_grid)) {
+
+     # flags
+     flags = as.list(flag_grid[i,, drop = FALSE])
+     message(sprintf(
+       "Training run %d/%d (flags = %s) ",
+       i,
+       nrow(flag_grid),
+       deparse(flags, control = c("keepInteger", "keepNA"))
+     ))
+
+     # execute run
+     training_run(
+       file = file,
+       config = config,
+       flags = flags,
+       properties = properties,
+       run_dir = NULL,
+       echo = echo,
+       view = FALSE,
+       envir = new.env(parent = envir),
+       encoding = encoding
+     )
+   }
+
+   # return data frame with all runs
+   invisible(ls_runs(latest_n = nrow(flag_grid), runs_dir = runs_dir))
+}
+
 
 #' @export
 print.tfruns_viewed_run <- function(x, ...) {
@@ -238,14 +359,15 @@ reset_tf_graph <- function() {
     if (reticulate::py_module_available("tensorflow")) {
       tf <- reticulate::import("tensorflow")
       tf$reset_default_graph()
-      if (reticulate::py_has_attr(tf$contrib, "keras"))
+      if (reticulate::py_has_attr(tf, "keras"))
+        tf$keras$backend$clear_session()
+      else if (reticulate::py_has_attr(tf$contrib, "keras"))
         tf$contrib$keras$backend$clear_session()
-      else if (reticulate::py_has_attr(tf, "keras"))
-        tf$keras$clear_session()
     }
     if (reticulate::py_module_available("keras")) {
       keras <- reticulate::import("keras")
-      keras$backend$clear_session()
+      if (reticulate::py_has_attr(keras$backend, "clear_session"))
+        keras$backend$clear_session()
     }
   }, error = function(e) {
     warning("Error occurred resetting tf graph: ", e$message)
@@ -274,9 +396,11 @@ with_changed_file_copy <- function(training_dir, run_dir, expr) {
     files_after <- utils::fileSnapshot(path = training_dir, recursive = TRUE)
     changed_files <- utils::changedFiles(files_before, files_after)
 
-    # filter out files within the run_dir
+    # filter out files within the run_dir and packrat/gs files (cloudml)
     changed_files <- c(changed_files$changed, changed_files$added)
     changed_files <- changed_files[!grepl(basename(run_dir), changed_files)]
+    changed_files <- changed_files[!grepl("^packrat[/\\]", changed_files)]
+    changed_files <- changed_files[!grepl("^gs[/\\]", changed_files)]
 
     # copy the changed files to the run_dir
     for (file in changed_files) {
@@ -358,7 +482,7 @@ view_run <- function(run_dir = latest_run(), viewer = getOption("tfruns.viewer")
 #'
 #' @inheritParams save_run_view
 #'
-#' @param runs @param run_dir Character vector of 2 training run directories or
+#' @param runs Character vector of 2 training run directories or
 #'   data frame returned from [ls_runs()] with at least 2 elements.
 #'
 #' @export
@@ -457,6 +581,7 @@ run_view_data <- function(run) {
 
   # default some potentially empty sections to null
   data <- list(
+    cloudml = NULL,
     history = NULL,
     model = NULL,
     metrics = NULL,
@@ -471,20 +596,46 @@ run_view_data <- function(run) {
   )
 
   # run_dir
-  data$run_dir <- run$run_dir
+  data$run_dir <- basename(run$run_dir)
 
   # attributes
   script <- basename(run$script)
   data$attributes <- list(
     context = run$context,
     script = script,
-    run_dir = run$run_dir,
     started = paste(as.POSIXct(run$start, origin="1970-01-01", tz = "GMT"),
                     "GMT"),
     time = format(as.POSIXct(as.character(Sys.Date()), tz = "GMT") +
                     run$end - run$start,
                   "%H:%M:%S")
   )
+
+  # cloudml attributes
+  if (identical(run$context, "cloudml")) {
+    cloudml <- with_preface("cloudml")
+    if (!is.null(cloudml)) {
+      data$cloudml <- list()
+      data$cloudml$job <- list(
+        href = cloudml$console_url,
+        text = cloudml$job
+      )
+      data$cloudml$logs <- list(
+        href = cloudml$log_url,
+        text = "View logs"
+      )
+      data$cloudml$scale_tier <- cloudml$scale_tier
+      data$cloudml$status <- cloudml$state
+      data$cloudml$created <- paste(
+        as.POSIXct(as.numeric(cloudml$created),
+                   origin="1970-01-01", tz = "GMT"),
+        "GMT"
+      )
+      data$cloudml$time <- format(as.POSIXct(as.character(Sys.Date()), tz = "GMT") +
+                     as.numeric(cloudml$end) - as.numeric(cloudml$created),
+                     "%H:%M:%S")
+      data$cloudml$ml_units <- cloudml$ml_units
+    }
+  }
 
   # metrics
   metrics <- with_preface("metric")
@@ -570,13 +721,17 @@ run_view_data <- function(run) {
   data$source_code <- run_source_code(script, run$run_dir)
 
   # files
-  files <- list.files(run$run_dir, recursive = TRUE)
+  files <- list.files(run$run_dir, recursive = FALSE)
   files <- gsub("\\\\", "/", files)
-  files <- files[!grepl("^tfruns.d/", files)]
-  files <- files[!grepl("^plots/", files)]
-  files <- files[!grepl("^logs/", files)]
-  if (length(files) > 0)
-    data$files <- as.list(files)
+  files <- files[!files %in% c("tfruns.d", "plots", "logs")]
+  if (length(files) > 0) {
+    data$files <- lapply(files, function(file) {
+      list(
+        name = file,
+        directory = utils::file_test("-d", file.path(run$run_dir, file))
+      )
+    })
+  }
 
   # plots
   plots <- list.files(file.path(run$run_dir, "plots"),

@@ -50,9 +50,16 @@
 
 <div class="col s12 m4 l4 xl4 push-m8 push-l8 push-xl8">
 
+<template v-if="cloudml">
+<property-card
+  caption="CloudML"
+  v-bind:data="cloudml">
+</property-card>
+</template>
+
 <template v-if="attributes">
 <property-card
-  caption="Attributes"
+  caption="Run"
   v-bind:data="attributes">
 </property-card>
 </template>
@@ -124,7 +131,8 @@
 
 <template v-if="files">
 <files-card
-  v-bind:files="files">
+  v-bind:files="files"
+  v-bind:run_dir="run_dir">
 </files-card>
 </template>
 
@@ -152,7 +160,8 @@
 
 <template v-if="files">
 <files-card
-  v-bind:files="files">
+  v-bind:files="files"
+  v-bind:run_dir="run_dir">
 </files-card>
 </template>
 

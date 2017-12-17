@@ -106,7 +106,7 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 <span class="co"># try 9 perumutations of dropout</span>
 <span class="cf">for</span> (dropout1 <span class="cf">in</span> <span class="kw">c</span>(<span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>))
   <span class="cf">for</span> (dropout2 <span class="cf">in</span> <span class="kw">c</span>(<span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>))
-    <span class="kw">training_run</span>(<span class="st">'mnist_mlp.R'</span>, <span class="dt">flags =</span> <span class="kw">c</span>(<span class="dt">dropout1 =</span> dropout1, <span class="dt">dropout2 =</span> dropout2))
+    <span class="kw">training_run</span>(<span class="st">'mnist_mlp.R'</span>, <span class="dt">flags =</span> <span class="kw">list</span>(<span class="dt">dropout1 =</span> dropout1, <span class="dt">dropout2 =</span> dropout2))
 
 <span class="co"># see which combination of dropout values performed best</span>
 <span class="kw">ls_runs</span>(<span class="dt">order =</span> eval_acc)[,<span class="kw">c</span>(<span class="st">&quot;eval_acc&quot;</span>, <span class="st">&quot;metric_acc&quot;</span>, <span class="st">&quot;flag_dropout1&quot;</span>, <span class="st">&quot;flag_dropout2&quot;</span>)]</code></pre></div>
