@@ -1,4 +1,4 @@
-d03fcb064ae00cd16b9e26566b864206 *DESCRIPTION
+eabe9f91360d71da83f10a73da5bb9d5 *DESCRIPTION
 79b40e04472c9cf37c28f28ce22104e9 *NAMESPACE
 518129713af3a52fc77b50de26ccf1f1 *R/addin.R
 51e5be23be14af00f10baf6cbff96389 *R/clean_runs.R
@@ -10,7 +10,7 @@ fcaf542115ec774c4ed6401aeba2afad *R/flags.R
 627fb6f0167a6da43895575cf61e8975 *R/reexports.R
 b731ea8fa0837bba60f95e825e2f08a0 *R/run_dir.R
 b4bbaab77d2f6f32e649f54ff0d99e55 *R/run_metadata.R
-dc685d27260268229f4408fd35cd8adb *R/training_run.R
+fd24155761c77812ce73e6ee03906417 *R/training_run.R
 745f1977034c15d0fab6e71f8de7cd86 *R/utils.R
 7818e249007ae741bb2e9f690b7097d4 *R/views.R
 738d8abbc3040081bb3ddccedde4c6ce *README.md
@@ -18,9 +18,9 @@ dc685d27260268229f4408fd35cd8adb *R/training_run.R
 485c2ad4afefe71beb95759189c343d6 *inst/doc/managing.R
 04c712df47eca0f1823ddac7cc090fc8 *inst/doc/managing.Rmd
 c7c87126a4ab8f311d046da9d11e6912 *inst/doc/managing.html
-2765691821c32dc41df7786a0852321b *inst/doc/overview.R
-8db20add23d45ea1f1fb379c4bf50188 *inst/doc/overview.Rmd
-290779dbf44642d215e841404321683b *inst/doc/overview.html
+febb08ef9b15432989bcfe2a12f5a9d2 *inst/doc/overview.R
+50b27a3528cedaacaf19a821a75317cd *inst/doc/overview.Rmd
+c6df378b83be3c82036430dce9af8691 *inst/doc/overview.html
 8b0aab8f9bf81a1a02cd4313be4a236a *inst/doc/tuning.R
 63debc8518b7ff2c30e55f19738e70c4 *inst/doc/tuning.Rmd
 fbc785094fe371330c992a2f6a0aeca9 *inst/doc/tuning.html
@@ -34,7 +34,7 @@ cc24fb38bbadf8e3f4a15048e691a547 *inst/views/components/highlight_js.html
 9b120f722e131e769b58a37bc579e428 *inst/views/components/jquery.html
 110babfa543615fd8aa85160197ed8cf *inst/views/components/material_icons.html
 1b01bfe5440aeb19346fe282799a8100 *inst/views/components/materialize.html
-039b58df18514484132ff64a0149d2b1 *inst/views/components/metrics_charts.html
+65d43c0037ecc4d4c2d84da68129f246 *inst/views/components/metrics_charts.html
 df65dbd4103f5b62e3d2f7ea31aa7c7a *inst/views/components/roboto.html
 bbe484a5183f94c50933af2f6e76aec2 *inst/views/components/vue_js.html
 c63766c1b3d817bbb7ccb5d4da806b04 *inst/views/components/vue_min_js.html
@@ -86,5 +86,5 @@ f59259b60f52bc620b1900c1c4073a1e *tests/testthat/write_run_data.R
 bcb497d038a87243079cfca590c04daf *vignettes/images/view_run.png
 23d024c3dd04a4d9ab3f2cf597fb738a *vignettes/images/view_run_output.png
 04c712df47eca0f1823ddac7cc090fc8 *vignettes/managing.Rmd
-8db20add23d45ea1f1fb379c4bf50188 *vignettes/overview.Rmd
+50b27a3528cedaacaf19a821a75317cd *vignettes/overview.Rmd
 63debc8518b7ff2c30e55f19738e70c4 *vignettes/tuning.Rmd

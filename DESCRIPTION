@@ -1,7 +1,7 @@
 Package: tfruns
 Type: Package
 Title: Training Run Tools for 'TensorFlow'
-Version: 1.1
+Version: 1.2
 Authors@R: c(
   person("JJ", "Allaire", role = c("aut", "cre"), email = "jj@rstudio.com"),
   person(family = "RStudio", role = c("cph", "fnd")),
@@ -45,7 +45,7 @@ LazyData: true
 RoxygenNote: 6.0.1
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2017-12-17 03:22:35 UTC; jjallaire
+Packaged: 2018-01-18 11:36:19 UTC; jjallaire
 Author: JJ Allaire [aut, cre],
   RStudio [cph, fnd],
   Mike Bostock [cph] (D3 library - https://d3js.org/),
@@ -63,4 +63,4 @@ Author: JJ Allaire [aut, cre],
   Yauheni Pakala [cph] (highlightjs-line-numbers library)
 Maintainer: JJ Allaire <jj@rstudio.com>
 Repository: CRAN
-Date/Publication: 2017-12-17 06:52:55 UTC
+Date/Publication: 2018-01-18 14:54:50 UTC

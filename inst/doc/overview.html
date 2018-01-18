@@ -80,14 +80,11 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 </ul>
 <div id="installation" class="section level2">
 <h2>Installation</h2>
-<p>You can install the <strong>tfruns</strong> package from GitHub as follows:</p>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r">devtools<span class="op">::</span><span class="kw">install_github</span>(<span class="st">&quot;rstudio/tfruns&quot;</span>)</code></pre></div>
+<p>You can install the <strong>tfruns</strong> package from CRAN as follows:</p>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">install.packages</span>(<span class="st">&quot;tfruns&quot;</span>)</code></pre></div>
 <p>The package is intended to be used with the <a href="https://tensorflow.rstudio.com/keras">keras</a> and/or the <a href="https://tensorflow.rstudio.com/keras">tfestimators</a> packages, both of which provide higher level interfaces to TensorFlow from R. These packages can be installed with:</p>
-<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="co"># keras</span>
-devtools<span class="op">::</span><span class="kw">install_github</span>(<span class="st">&quot;rstudio/keras&quot;</span>)
-
-<span class="co"># tfestimators</span>
-devtools<span class="op">::</span><span class="kw">install_github</span>(<span class="st">&quot;rstudio/tfestimators&quot;</span>)</code></pre></div>
+<div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">install.packages</span>(<span class="st">&quot;keras&quot;</span>)
+<span class="kw">install.packages</span>(<span class="st">&quot;tfestimators&quot;</span>)</code></pre></div>
 </div>
 <div id="training" class="section level2">
 <h2>Training</h2>

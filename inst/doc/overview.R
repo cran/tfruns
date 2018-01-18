@@ -2,14 +2,11 @@
 knitr::opts_chunk$set(eval = FALSE)
 
 ## ------------------------------------------------------------------------
-#  devtools::install_github("rstudio/tfruns")
+#  install.packages("tfruns")
 
 ## ------------------------------------------------------------------------
-#  # keras
-#  devtools::install_github("rstudio/keras")
-#  
-#  # tfestimators
-#  devtools::install_github("rstudio/tfestimators")
+#  install.packages("keras")
+#  install.packages("tfestimators")
 
 ## ------------------------------------------------------------------------
 #  library(tfruns)
