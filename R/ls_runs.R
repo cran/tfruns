@@ -1,5 +1,5 @@
 
-#' List training runs
+#' List or view training runs
 #'
 #' @param subset Logical expression indicating rows to keep (missing values are
 #'   taken as false). See [subset()].
@@ -12,6 +12,12 @@
 #'   option if specified).
 #'
 #' @return Data frame with training runs
+#'
+#' @details When printing the results of `ls_runs()`, only `run_dir`,
+#' `metric_loss`, `metric_val_loss`,  and any columns specified in `order` will
+#' be printed.
+#'
+#' To view all fields, use `View(ls_runs())`.
 #'
 #' @export
 ls_runs <- function(subset = NULL,
@@ -63,11 +69,12 @@ ls_runs <- function(subset = NULL,
     run_list$cloudml_end <- as_date(run_list[["cloudml_end"]])
 
   } else {
-    run_list <- tibble::data_frame(
+    run_list <- data.frame(
       type = character(),
       run_dir = character(),
       start = numeric(),
-      end = numeric()
+      end = numeric(),
+      stringsAsFactors = FALSE
     )
   }
 
@@ -76,11 +83,13 @@ ls_runs <- function(subset = NULL,
     subset_call <- substitute(subset)
     rows <- eval(subset_call, run_list)
     run_list <- run_list[rows, ]
+    rownames(run_list) <- seq(length = nrow(run_list))
   }
 
   # return runs
   return_runs(run_list, order)
 }
+
 
 
 #' Latest training run
@@ -153,15 +162,61 @@ print.tfruns_model_summary <- function(x, ...) {
 
 #' @export
 print.tfruns_runs_df <- function(x, ...) {
+  cols <- colnames(x)
   if (nrow(x) == 0) {
     cat("No training runs found.\n")
   } else if (nrow(x) == 1) {
     print(as_run_info(x))
-  } else {
+  } else  {
+    # if no subsetting of columns has taken place then use default display
+    if (identical(colnames(x), attr(x, "original_cols"))) {
+
+      # calculate and apply display columns
+      order_cols <- attr(x, "order")
+      eval_cols <- cols[grepl("^eval_", cols)]
+      metric_cols <- cols[grepl("^metric_", cols)]
+      display_cols <- unique(c("run_dir", order_cols, eval_cols, metric_cols))
+      display_cols <- intersect(display_cols, cols)
+      x <- x[, display_cols, drop = FALSE]
+
+      # print extra cols
+      extra_cols <- cols[!is.element(cols, display_cols)]
+      if (length(extra_cols) > 0) {
+        extra_output <- paste0(extra_cols, collapse = ", ")
+        extra_output <- paste(
+          paste("#  ", strwrap(extra_output)),
+          collapse = "\n"
+        )
+        extra_output <- paste0(
+          "# ... with ", length(extra_cols), " more columns:\n",
+          extra_output
+        )
+      }
+    } else {
+      extra_output <- NULL
+    }
+
+    # see if there are extra rows
+    original_rows <- nrow(x)
+    x <- utils::head(x, n = 10)
+    extra_rows <- original_rows - nrow(x)
+    if (extra_rows > 0) {
+      extra_output <- paste0("# ... with ", extra_rows, " more rows\n",
+                             extra_output)
+    }
+
+    # print header
+    cat(sprintf("Data frame: %d x %d", original_rows, length(cols)), "\n")
+
+    # print with default df method
     cls <- class(x)
     cls <- cls[cls != "tfruns_runs_df"]
     class(x) <- cls
     print(x)
+
+    # print extra output
+    if (!is.null(extra_output))
+      cat(extra_output)
   }
 }
 
@@ -333,7 +388,7 @@ run_record <- function(run_dir) {
     columns$source_code <- source_code
 
   # convert to data frame for calls to rbind
-  tibble::as_data_frame(columns)
+  as.data.frame(columns, stringsAsFactors = FALSE)
 }
 
 combine_runs <- function(x, y) {
@@ -379,8 +434,10 @@ return_runs <- function(runs, order = NULL) {
   # re-order cols (always have type and run_dir at the beginning)
   runs <- runs[, cols]
 
-  # apply special class
+  # apply special class and add order attribute
   class(runs) <- c("tfruns_runs_df", class(runs))
+  attr(runs, "order") <- order
+  attr(runs, "original_cols") <- colnames(runs)
 
   # return runs
   runs

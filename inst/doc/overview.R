@@ -31,8 +31,8 @@ knitr::opts_chunk$set(eval = FALSE)
 #  View(ls_runs())
 
 ## ------------------------------------------------------------------------
-#  ls_runs(eval_acc > 0.98, order = eval_acc)
+#  ls_runs(eval_acc > 0.9570, order = eval_acc)
 
 ## ------------------------------------------------------------------------
-#  compare_runs(ls_runs(eval_acc > 0.98, order = eval_acc))
+#  compare_runs(ls_runs(eval_acc > 0.9570, order = eval_acc))
 
