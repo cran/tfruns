@@ -1,11 +1,18 @@
 context("run_data")
 
-source("utils.R")
 
-run_dir <- training_run("write_run_data.R")$run_dir
+run_dir <- with_tests_dir({
+  x <- training_run("write_run_data.R", echo = FALSE)$run_dir
+  normalizePath(x, winslash = "/")
+})
+
 
 run_data <- function(...) {
-  file.path(run_dir, "tfruns.d", ...)
+  with_tests_dir({
+    run_dir <- training_run("write_run_data.R", echo = FALSE)$run_dir
+    run_dir <- normalizePath(run_dir, winslash = "/")
+    file.path(run_dir, "tfruns.d", ...)
+  })
 }
 
 expect_run_data <- function(...) {
@@ -38,4 +45,19 @@ test_that("custom run data can be written", {
 test_that("created and modified files are copied to the run_dir", {
   expect_true(file.exists(file.path(run_dir, 'extra.dat')))
   expect_true(file.exists(file.path(run_dir, 'subdir', 'extra.dat')))
+})
+
+test_that("precision of metrics", {
+  run_dir <- with_tests_dir({
+    x <- training_run("flags-precision.R", echo = FALSE)$run_dir
+    normalizePath(x, winslash = "/")
+  })
+
+  flags <- jsonlite::read_json(
+    path = file.path(run_dir, "tfruns.d", "flags.json")
+  )
+
+  expect_equal(flags$learning_rate, 2e-5)
+  expect_equal(flags$max_steps, 1e-6)
+
 })

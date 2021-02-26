@@ -10,6 +10,8 @@
 #'   additional metadata about the run which will be subsequently available via
 #'   [ls_runs()].
 #' @param run_dir Directory to store run data within
+#' @param artifacts_dir Directory to capture created and modified files within.
+#'   Pass `NULL` to not capture any artifcats.
 #' @param echo Print expressions within training script
 #' @param view View the results of the run after training. The default "auto"
 #'   will view the run when executing a top-level (printed) statement in an
@@ -40,6 +42,7 @@ training_run <- function(file = "train.R",
                          flags = NULL,
                          properties = NULL,
                          run_dir = NULL,
+                         artifacts_dir = getwd(),
                          echo = TRUE,
                          view = "auto",
                          envir = parent.frame(),
@@ -69,7 +72,7 @@ training_run <- function(file = "train.R",
   )
 
   # execute the training run
-  do_training_run(file, run_dir, echo = echo, envir = envir, encoding = encoding)
+  do_training_run(file, run_dir, artifacts_dir, echo = echo, envir = envir, encoding = encoding)
 
   # check for forced view
   force_view <- isTRUE(view)
@@ -121,8 +124,10 @@ training_run <- function(file = "train.R",
 #' @inheritParams training_run
 #' @inheritParams ls_runs
 #'
-#' @param flags Named list with flag values (multiple values can be
-#'   provided for each flag)
+#' @param flags Either a named list with flag values (multiple values can be
+#'   provided for each flag) or a data frame that contains pre-generated
+#'   combinations of flags (e.g. via [base::expand.grid()]). The latter can
+#'   be useful for subsetting combinations. See 'Examples'.
 #' @param sample Sampling rate for flag combinations (defaults to
 #'   running all combinations).
 #' @param confirm Confirm before executing tuning run.
@@ -130,19 +135,34 @@ training_run <- function(file = "train.R",
 #' @return Data frame with summary of all training runs performed
 #'   during tuning.
 #'
-#' @examples \dontrun{
+#' @examples
+#' \dontrun{
 #' library(tfruns)
 #'
-#' runs <- tuning_run("mnist_mlp.R", flags = list(
-#'   batch_size = c(64, 128),
-#'   dropout1 = c(0.2, 0.3, 0.4),
-#'   dropout2 = c(0.2, 0.3, 0.4)
-#' ))
-#'
+#' # using a list as input to the flags argument
+#' runs <- tuning_run(
+#'   system.file("examples/mnist_mlp/mnist_mlp.R", package = "tfruns"),
+#'   flags = list(
+#'     dropout1 = c(0.2, 0.3, 0.4),
+#'     dropout2 = c(0.2, 0.3, 0.4)
+#'   )
+#' )
 #' runs[order(runs$eval_acc, decreasing = TRUE), ]
 #'
+#' # using a data frame as input to the flags argument
+#' # resulting in the same combinations above, but remove those
+#' # where the combined dropout rate exceeds 1
+#' grid <- expand.grid(
+#'   dropout1 = c(0.2, 0.3, 0.4),
+#'   dropout2 = c(0.2, 0.3, 0.4)
+#' )
+#' grid$combined_droput <- grid$dropout1 + grid$dropout2
+#' grid <- grid[grid$combined_droput <= 1, ]
+#' runs <- tuning_run(
+#'   system.file("examples/mnist_mlp/mnist_mlp.R", package = "tfruns"),
+#'   flags = grid[, c("dropout1", "dropout2")]
+#' )
 #' }
-#'
 #' @export
 tuning_run <- function(file = "train.R",
                        context = "local",
@@ -151,13 +171,16 @@ tuning_run <- function(file = "train.R",
                        sample = NULL,
                        properties = NULL,
                        runs_dir = getOption("tfruns.runs_dir", "runs"),
+                       artifacts_dir = getwd(),
                        echo = TRUE,
                        confirm = interactive(),
                        envir = parent.frame(),
                        encoding = getOption("encoding")) {
 
-   if (!is.list(flags) || is.null(names(flags)))
-     stop("flags must be specified as a named list")
+  if (!is.list(flags) || is.null(names(flags))) {
+    stop("flags must be specified as a named list or a data frame")
+  }
+
 
    # set runs dir if specified
    old_runs_dir <- getOption("tfruns.runs_dir")
@@ -166,18 +189,24 @@ tuning_run <- function(file = "train.R",
      on.exit(options(tfruns.runs_dir = old_runs_dir), add = TRUE)
 
    # calculate the flag grid
-   flag_grid <- do.call(function(...) expand.grid(..., stringsAsFactors = FALSE), flags)
-   cat(prettyNum(nrow(flag_grid), big.mark = ","), "total combinations of flags ")
+   if (!is.data.frame(flags)) {
+     flag_grid <- do.call(function(...) expand.grid(..., stringsAsFactors = FALSE), flags)
+     message(prettyNum(nrow(flag_grid), big.mark = ","), " total combinations of flags ")
+   } else {
+     flag_grid <- flags
+   }
 
    # sample if requested
    if (!is.null(sample)) {
      if (sample > 1)
        stop("sample must be a floating point value less or equal to 1")
-     indices <- sample(1:nrow(flag_grid), size = sample * nrow(flag_grid))
+     if (sample <= 0)
+       stop("sample must be a floating point value greater than 0")
+     indices <- sample.int(nrow(flag_grid), size = ceiling(sample * nrow(flag_grid)))
      flag_grid <- flag_grid[indices, , drop = FALSE]
-     cat("(sampled to", prettyNum(nrow(flag_grid), big.mark = ","), "combinations)\n")
+     message("(sampled to ", prettyNum(nrow(flag_grid), big.mark = ","), " combinations)\n")
    } else {
-     cat("(use sample parameter to run a random subset)\n")
+     message("(use sample parameter to run a random subset)")
    }
 
    if (confirm) {
@@ -205,6 +234,7 @@ tuning_run <- function(file = "train.R",
        flags = flags,
        properties = properties,
        run_dir = NULL,
+       artifacts_dir = artifacts_dir,
        echo = echo,
        view = FALSE,
        envir = new.env(parent = envir),
@@ -223,9 +253,9 @@ print.tfruns_viewed_run <- function(x, ...) {
 }
 
 
-do_training_run <- function(file, run_dir, echo, envir, encoding) {
+do_training_run <- function(file, run_dir, artifacts_dir, echo, envir, encoding) {
 
-  with_changed_file_copy(getwd(), run_dir, {
+  with_changed_file_copy(artifacts_dir, run_dir, {
 
     # write script
     write_run_property("script", basename(file))
@@ -358,7 +388,12 @@ reset_tf_graph <- function() {
   tryCatch({
     if (reticulate::py_module_available("tensorflow")) {
       tf <- reticulate::import("tensorflow")
-      tf$reset_default_graph()
+      if (tf_version(tf) >= 1.13 && !tf$executing_eagerly())
+        if(tf_version(tf) >= 2.0) {
+          tf$compat$v1$reset_default_graph()
+        } else {
+          tf$reset_default_graph()
+        }
       if (reticulate::py_has_attr(tf, "keras"))
         tf$keras$backend$clear_session()
       else if (reticulate::py_has_attr(tf$contrib, "keras"))
@@ -385,32 +420,34 @@ capture_stacktrace <- function(stack) {
   rev(stack)
 }
 
-with_changed_file_copy <- function(training_dir, run_dir, expr) {
+with_changed_file_copy <- function(artifacts_dir, run_dir, expr) {
 
-  # snapshot the files in the training script directory before training
-  files_before <- utils::fileSnapshot(path = training_dir, recursive = TRUE)
+  if (!is.null(artifacts_dir)) {
+    # snapshot the files in the training script directory before training
+    files_before <- utils::fileSnapshot(path = artifacts_dir, recursive = TRUE)
 
-  # copy changed files on exit
-  on.exit({
-    # snapshot the files in the run_dir after training then compute changed files
-    files_after <- utils::fileSnapshot(path = training_dir, recursive = TRUE)
-    changed_files <- utils::changedFiles(files_before, files_after)
+    # copy changed files on exit
+    on.exit({
+      # snapshot the files in the run_dir after training then compute changed files
+      files_after <- utils::fileSnapshot(path = artifacts_dir, recursive = TRUE)
+      changed_files <- utils::changedFiles(files_before, files_after)
 
-    # filter out files within the run_dir and packrat/gs files (cloudml)
-    changed_files <- c(changed_files$changed, changed_files$added)
-    changed_files <- changed_files[!grepl(basename(run_dir), changed_files)]
-    changed_files <- changed_files[!grepl("^packrat[/\\]", changed_files)]
-    changed_files <- changed_files[!grepl("^gs[/\\]", changed_files)]
+      # filter out files within the run_dir and packrat/gs files (cloudml)
+      changed_files <- c(changed_files$changed, changed_files$added)
+      changed_files <- changed_files[!grepl(basename(run_dir), changed_files)]
+      changed_files <- changed_files[!grepl("^packrat[/\\]", changed_files)]
+      changed_files <- changed_files[!grepl("^gs[/\\]", changed_files)]
 
-    # copy the changed files to the run_dir
-    for (file in changed_files) {
-      dir <- dirname(file)
-      target_dir <- file.path(run_dir, dir)
-      if (!utils::file_test("-d", target_dir))
-        dir.create(target_dir, recursive = TRUE)
-      file.copy(from = file.path(training_dir, file), to = target_dir)
-    }
-  }, add = TRUE)
+      # copy the changed files to the run_dir
+      for (file in changed_files) {
+        dir <- dirname(file)
+        target_dir <- file.path(run_dir, dir)
+        if (!utils::file_test("-d", target_dir))
+          dir.create(target_dir, recursive = TRUE)
+        file.copy(from = file.path(artifacts_dir, file), to = target_dir)
+      }
+    }, add = TRUE)
+  }
 
   # execute the expression
   force(expr)

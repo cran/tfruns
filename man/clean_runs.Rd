@@ -5,11 +5,16 @@
 \alias{purge_runs}
 \title{Clean run directories}
 \usage{
-clean_runs(runs = ls_runs(runs_dir = runs_dir),
-  runs_dir = getOption("tfruns.runs_dir", "runs"), confirm = interactive())
+clean_runs(
+  runs = ls_runs(runs_dir = runs_dir),
+  runs_dir = getOption("tfruns.runs_dir", "runs"),
+  confirm = interactive()
+)
 
-purge_runs(runs_dir = getOption("tfruns.runs_dir", "runs"),
-  confirm = interactive())
+purge_runs(
+  runs_dir = getOption("tfruns.runs_dir", "runs"),
+  confirm = interactive()
+)
 }
 \arguments{
 \item{runs}{Runs to clean. Can be specified as a data frame
@@ -39,5 +44,7 @@ clean_runs(ls_runs(completed == FALSE))
 
 }
 \seealso{
-Other run management: \code{\link{copy_run}}
+Other run management: 
+\code{\link{copy_run}()}
 }
+\concept{run management}

@@ -1,3 +1,9 @@
+with_tests_dir <- function(code){
+  test_dir <- testthat::test_path()
+  withr::with_dir(test_dir, code)
+}
+
+
 define_flags <- function(...) {
   flags(
     flag_numeric('learning_rate', 0.01, 'Initial learning rate.'),
