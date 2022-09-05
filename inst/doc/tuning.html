@@ -27,22 +27,6 @@ document.addEventListener('DOMContentLoaded', function(e) {
   }
 });
 </script>
-<script>// Hide empty <a> tag within highlighted CodeBlock for screen reader accessibility (see https://github.com/jgm/pandoc/issues/6352#issuecomment-626106786) -->
-// v0.0.1
-// Written by JooYoung Seo (jooyoung@psu.edu) and Atsushi Yasumoto on June 1st, 2020.
-
-document.addEventListener('DOMContentLoaded', function() {
-  const codeList = document.getElementsByClassName("sourceCode");
-  for (var i = 0; i < codeList.length; i++) {
-    var linkList = codeList[i].getElementsByTagName('a');
-    for (var j = 0; j < linkList.length; j++) {
-      if (linkList[j].innerHTML === "") {
-        linkList[j].setAttribute('aria-hidden', 'true');
-      }
-    }
-  }
-});
-</script>
 
 <style type="text/css">
   code{white-space: pre-wrap;}
@@ -54,11 +38,20 @@ document.addEventListener('DOMContentLoaded', function() {
     </style>
 
 
-<style type="text/css">code{white-space: pre;}</style>
+
+<style type="text/css">
+  code {
+    white-space: pre;
+  }
+  .sourceCode {
+    overflow: visible;
+  }
+</style>
 <style type="text/css" data-origin="pandoc">
 pre > code.sourceCode { white-space: pre; position: relative; }
 pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
 div.sourceCode { margin: 1em 0; }
 pre.sourceCode { margin: 0; }
@@ -127,13 +120,20 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   for (var i = 0; i < sheets.length; i++) {
     if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
     try { var rules = sheets[i].cssRules; } catch (e) { continue; }
-    for (var j = 0; j < rules.length; j++) {
+    var j = 0;
+    while (j < rules.length) {
       var rule = rules[j];
       // check if there is a div.sourceCode rule
-      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") continue;
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
       var style = rule.style.cssText;
       // check if color or background-color is set
-      if (rule.style.color === '' && rule.style.backgroundColor === '') continue;
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
       // replace div.sourceCode by a pre.sourceCode rule
       sheets[i].deleteRule(j);
       sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
@@ -343,43 +343,61 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 
 <div id="overview" class="section level2">
 <h2>Overview</h2>
-<p>Tuning a model often requires exploring the impact of changes to many hyperparameters. The best way to approach this is generally not by changing the source code of the training script as we did above, but instead by defining flags for key parameters then training over the combinations of those flags to determine which combination of flags yields the best model.</p>
+<p>Tuning a model often requires exploring the impact of changes to many
+hyperparameters. The best way to approach this is generally not by
+changing the source code of the training script as we did above, but
+instead by defining flags for key parameters then training over the
+combinations of those flags to determine which combination of flags
+yields the best model.</p>
 </div>
 <div id="training-flags" class="section level2">
 <h2>Training Flags</h2>
-<p>Here’s a declaration of 2 flags that control dropout rate within a model:</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1"></a>FLAGS &lt;-<span class="st"> </span><span class="kw">flags</span>(</span>
-<span id="cb1-2"><a href="#cb1-2"></a>  <span class="kw">flag_numeric</span>(<span class="st">&quot;dropout1&quot;</span>, <span class="fl">0.4</span>),</span>
-<span id="cb1-3"><a href="#cb1-3"></a>  <span class="kw">flag_numeric</span>(<span class="st">&quot;dropout2&quot;</span>, <span class="fl">0.3</span>)</span>
-<span id="cb1-4"><a href="#cb1-4"></a>)</span></code></pre></div>
+<p>Here’s a declaration of 2 flags that control dropout rate within a
+model:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>FLAGS <span class="ot">&lt;-</span> <span class="fu">flags</span>(</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">flag_numeric</span>(<span class="st">&quot;dropout1&quot;</span>, <span class="fl">0.4</span>),</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">flag_numeric</span>(<span class="st">&quot;dropout2&quot;</span>, <span class="fl">0.3</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
 <p>These flags are then used in the definition of the model here:</p>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1"></a>model &lt;-<span class="st"> </span><span class="kw">keras_model_sequential</span>()</span>
-<span id="cb2-2"><a href="#cb2-2"></a>model <span class="op">%&gt;%</span></span>
-<span id="cb2-3"><a href="#cb2-3"></a><span class="st">  </span><span class="kw">layer_dense</span>(<span class="dt">units =</span> <span class="dv">128</span>, <span class="dt">activation =</span> <span class="st">&#39;relu&#39;</span>, <span class="dt">input_shape =</span> <span class="kw">c</span>(<span class="dv">784</span>)) <span class="op">%&gt;%</span></span>
-<span id="cb2-4"><a href="#cb2-4"></a><span class="st">  </span><span class="kw">layer_dropout</span>(<span class="dt">rate =</span> FLAGS<span class="op">$</span>dropout1) <span class="op">%&gt;%</span></span>
-<span id="cb2-5"><a href="#cb2-5"></a><span class="st">  </span><span class="kw">layer_dense</span>(<span class="dt">units =</span> <span class="dv">128</span>, <span class="dt">activation =</span> <span class="st">&#39;relu&#39;</span>) <span class="op">%&gt;%</span></span>
-<span id="cb2-6"><a href="#cb2-6"></a><span class="st">  </span><span class="kw">layer_dropout</span>(<span class="dt">rate =</span> FLAGS<span class="op">$</span>dropout2) <span class="op">%&gt;%</span></span>
-<span id="cb2-7"><a href="#cb2-7"></a><span class="st">  </span><span class="kw">layer_dense</span>(<span class="dt">units =</span> <span class="dv">10</span>, <span class="dt">activation =</span> <span class="st">&#39;softmax&#39;</span>)</span></code></pre></div>
-<p>Once we’ve defined flags, we can pass alternate flag values to <code>training_run()</code> as follows:</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1"></a><span class="kw">training_run</span>(<span class="st">&#39;mnist_mlp.R&#39;</span>, <span class="dt">flags =</span> <span class="kw">list</span>(<span class="dt">dropout1 =</span> <span class="fl">0.2</span>, <span class="dt">dropout2 =</span> <span class="fl">0.2</span>))</span></code></pre></div>
-<p>You aren’t required to specify all of the flags (any flags excluded will simply use their default value).</p>
-<p>Flags make it very straightforward to systematically explore the impact of changes to hyperparameters on model performance, for example:</p>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1"></a><span class="cf">for</span> (dropout1 <span class="cf">in</span> <span class="kw">c</span>(<span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>))</span>
-<span id="cb4-2"><a href="#cb4-2"></a>  <span class="kw">training_run</span>(<span class="st">&#39;mnist_mlp.R&#39;</span>, <span class="dt">flags =</span> <span class="kw">list</span>(<span class="dt">dropout1 =</span> dropout1))</span></code></pre></div>
-<p>Flag values are automatically included in run data with a “flag_” prefix (e.g. <code>flag_dropout1</code>, <code>flag_dropout2</code>).</p>
-<p>See the article on <a href="https://tensorflow.rstudio.com/tools/tfruns/overview/">training flags</a> for additional documentation on using flags.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>model <span class="ot">&lt;-</span> <span class="fu">keras_model_sequential</span>()</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>model <span class="sc">%&gt;%</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">128</span>, <span class="at">activation =</span> <span class="st">&#39;relu&#39;</span>, <span class="at">input_shape =</span> <span class="fu">c</span>(<span class="dv">784</span>)) <span class="sc">%&gt;%</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">layer_dropout</span>(<span class="at">rate =</span> FLAGS<span class="sc">$</span>dropout1) <span class="sc">%&gt;%</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">128</span>, <span class="at">activation =</span> <span class="st">&#39;relu&#39;</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">layer_dropout</span>(<span class="at">rate =</span> FLAGS<span class="sc">$</span>dropout2) <span class="sc">%&gt;%</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">layer_dense</span>(<span class="at">units =</span> <span class="dv">10</span>, <span class="at">activation =</span> <span class="st">&#39;softmax&#39;</span>)</span></code></pre></div>
+<p>Once we’ve defined flags, we can pass alternate flag values to
+<code>training_run()</code> as follows:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">training_run</span>(<span class="st">&#39;mnist_mlp.R&#39;</span>, <span class="at">flags =</span> <span class="fu">list</span>(<span class="at">dropout1 =</span> <span class="fl">0.2</span>, <span class="at">dropout2 =</span> <span class="fl">0.2</span>))</span></code></pre></div>
+<p>You aren’t required to specify all of the flags (any flags excluded
+will simply use their default value).</p>
+<p>Flags make it very straightforward to systematically explore the
+impact of changes to hyperparameters on model performance, for
+example:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (dropout1 <span class="cf">in</span> <span class="fu">c</span>(<span class="fl">0.1</span>, <span class="fl">0.2</span>, <span class="fl">0.3</span>))</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">training_run</span>(<span class="st">&#39;mnist_mlp.R&#39;</span>, <span class="at">flags =</span> <span class="fu">list</span>(<span class="at">dropout1 =</span> dropout1))</span></code></pre></div>
+<p>Flag values are automatically included in run data with a “flag_”
+prefix (e.g. <code>flag_dropout1</code>,
+<code>flag_dropout2</code>).</p>
+<p>See the article on <a href="https://tensorflow.rstudio.com/tools/tfruns/overview/">training
+flags</a> for additional documentation on using flags.</p>
 </div>
 <div id="tuning-runs" class="section level2">
 <h2>Tuning Runs</h2>
-<p>Above we demonstrated writing a loop to call <code>training_run()</code> with various different flag values. A better way to accomplish this is the <code>tuning_run()</code> function, which allows you to specify multiple values for each flag, and executes training runs for all combinations of the specified flags. For example:</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1"></a><span class="co"># run various combinations of dropout1 and dropout2</span></span>
-<span id="cb5-2"><a href="#cb5-2"></a>runs &lt;-<span class="st"> </span><span class="kw">tuning_run</span>(<span class="st">&quot;mnist_mlp.R&quot;</span>, <span class="dt">flags =</span> <span class="kw">list</span>(</span>
-<span id="cb5-3"><a href="#cb5-3"></a>  <span class="dt">dropout1 =</span> <span class="kw">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>),</span>
-<span id="cb5-4"><a href="#cb5-4"></a>  <span class="dt">dropout2 =</span> <span class="kw">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
-<span id="cb5-5"><a href="#cb5-5"></a>))</span>
-<span id="cb5-6"><a href="#cb5-6"></a></span>
-<span id="cb5-7"><a href="#cb5-7"></a><span class="co"># find the best evaluation accuracy</span></span>
-<span id="cb5-8"><a href="#cb5-8"></a>runs[<span class="kw">order</span>(runs<span class="op">$</span>eval_acc, <span class="dt">decreasing =</span> <span class="ot">TRUE</span>), ]</span></code></pre></div>
+<p>Above we demonstrated writing a loop to call
+<code>training_run()</code> with various different flag values. A better
+way to accomplish this is the <code>tuning_run()</code> function, which
+allows you to specify multiple values for each flag, and executes
+training runs for all combinations of the specified flags. For
+example:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># run various combinations of dropout1 and dropout2</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>runs <span class="ot">&lt;-</span> <span class="fu">tuning_run</span>(<span class="st">&quot;mnist_mlp.R&quot;</span>, <span class="at">flags =</span> <span class="fu">list</span>(</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">dropout1 =</span> <span class="fu">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>),</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">dropout2 =</span> <span class="fu">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>))</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># find the best evaluation accuracy</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>runs[<span class="fu">order</span>(runs<span class="sc">$</span>eval_acc, <span class="at">decreasing =</span> <span class="cn">TRUE</span>), ]</span></code></pre></div>
 <pre><code>Data frame: 9 x 28 
                     run_dir eval_loss eval_acc metric_loss metric_acc metric_val_loss metric_val_acc
 9 runs/2018-01-26T13-21-03Z    0.1002   0.9817      0.0346     0.9900          0.1086         0.9794
@@ -395,20 +413,24 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 #   flag_batch_size, flag_dropout1, flag_dropout2, samples, validation_samples, batch_size,
 #   epochs, epochs_completed, metrics, model, loss_function, optimizer, learning_rate, script,
 #   start, end, completed, output, source_code, context, type</code></pre>
-<p>Note that the <code>tuning_run()</code> function returns a data frame containing a summary of all of the executed training runs.</p>
+<p>Note that the <code>tuning_run()</code> function returns a data frame
+containing a summary of all of the executed training runs.</p>
 </div>
 <div id="experiment-scopes" class="section level2">
 <h2>Experiment Scopes</h2>
-<p>By default all runs go into the “runs” sub-directory of the current working directory. For various types of ad-hoc experimentation this works well, but in some cases for a tuning run you may want to create a separate directory scope.</p>
+<p>By default all runs go into the “runs” sub-directory of the current
+working directory. For various types of ad-hoc experimentation this
+works well, but in some cases for a tuning run you may want to create a
+separate directory scope.</p>
 <p>You can do this by specifying the <code>runs_dir</code> argument:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1"></a><span class="co"># run various combinations of dropout1 and dropout2</span></span>
-<span id="cb7-2"><a href="#cb7-2"></a><span class="kw">tuning_run</span>(<span class="st">&quot;mnist_mlp.R&quot;</span>, <span class="dt">runs_dir =</span> <span class="st">&quot;dropout_tuning&quot;</span>, <span class="dt">flags =</span> <span class="kw">list</span>(</span>
-<span id="cb7-3"><a href="#cb7-3"></a>  <span class="dt">dropout1 =</span> <span class="kw">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>),</span>
-<span id="cb7-4"><a href="#cb7-4"></a>  <span class="dt">dropout2 =</span> <span class="kw">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
-<span id="cb7-5"><a href="#cb7-5"></a>))</span>
-<span id="cb7-6"><a href="#cb7-6"></a></span>
-<span id="cb7-7"><a href="#cb7-7"></a><span class="co"># list runs witin the specified runs_dir</span></span>
-<span id="cb7-8"><a href="#cb7-8"></a><span class="kw">ls_runs</span>(<span class="dt">order =</span> eval_acc, <span class="dt">runs_dir =</span> <span class="st">&quot;dropout_tuning&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># run various combinations of dropout1 and dropout2</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="fu">tuning_run</span>(<span class="st">&quot;mnist_mlp.R&quot;</span>, <span class="at">runs_dir =</span> <span class="st">&quot;dropout_tuning&quot;</span>, <span class="at">flags =</span> <span class="fu">list</span>(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">dropout1 =</span> <span class="fu">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>),</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">dropout2 =</span> <span class="fu">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>))</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a><span class="co"># list runs witin the specified runs_dir</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="fu">ls_runs</span>(<span class="at">order =</span> eval_acc, <span class="at">runs_dir =</span> <span class="st">&quot;dropout_tuning&quot;</span>)</span></code></pre></div>
 <pre><code>Data frame: 9 x 28 
                               run_dir eval_acc eval_loss metric_loss metric_acc metric_val_loss metric_val_acc
 9 dropout_tuning/2018-01-26T13-38-02Z   0.9803    0.0980      0.0324     0.9902          0.1096         0.9789
@@ -427,12 +449,14 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 </div>
 <div id="sampling-flag-combinations" class="section level2">
 <h2>Sampling Flag Combinations</h2>
-<p>If the number of flag combinations is very large, you can also specify that only a random sample of combinations should be tried using the <code>sample</code> parameter. For example:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1"></a><span class="co"># run random sample (0.3) of dropout1 and dropout2 combinations</span></span>
-<span id="cb9-2"><a href="#cb9-2"></a>runs &lt;-<span class="st"> </span><span class="kw">tuning_run</span>(<span class="st">&quot;mnist_mlp.R&quot;</span>, <span class="dt">sample =</span> <span class="fl">0.3</span>, <span class="dt">flags =</span> <span class="kw">list</span>(</span>
-<span id="cb9-3"><a href="#cb9-3"></a>  <span class="dt">dropout1 =</span> <span class="kw">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>),</span>
-<span id="cb9-4"><a href="#cb9-4"></a>  <span class="dt">dropout2 =</span> <span class="kw">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
-<span id="cb9-5"><a href="#cb9-5"></a>))</span></code></pre></div>
+<p>If the number of flag combinations is very large, you can also
+specify that only a random sample of combinations should be tried using
+the <code>sample</code> parameter. For example:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># run random sample (0.3) of dropout1 and dropout2 combinations</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>runs <span class="ot">&lt;-</span> <span class="fu">tuning_run</span>(<span class="st">&quot;mnist_mlp.R&quot;</span>, <span class="at">sample =</span> <span class="fl">0.3</span>, <span class="at">flags =</span> <span class="fu">list</span>(</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">dropout1 =</span> <span class="fu">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>),</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">dropout2 =</span> <span class="fu">c</span>(<span class="fl">0.2</span>, <span class="fl">0.3</span>, <span class="fl">0.4</span>)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>))</span></code></pre></div>
 </div>
 
 

@@ -6,7 +6,6 @@ knitr::opts_chunk$set(eval = FALSE)
 
 ## -----------------------------------------------------------------------------
 #  install.packages("keras")
-#  install.packages("tfestimators")
 
 ## -----------------------------------------------------------------------------
 #  library(tfruns)

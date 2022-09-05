@@ -1,9 +1,10 @@
 Package: tfruns
 Type: Package
 Title: Training Run Tools for 'TensorFlow'
-Version: 1.5.0
+Version: 1.5.1
 Authors@R: c(
-  person("Daniel", "Falbel", role = c("ctb", "cre"), email = "daniel@rstudio.com"),
+  person("Tomasz", "Kalinowski", role = c("ctb", "cre"), email = "tomasz@rstudio.com"),
+  person("Daniel", "Falbel", role = c("ctb"), email = "daniel@rstudio.com"),
   person("JJ", "Allaire", role = c("aut"), email = "jj@rstudio.com"),
   person(family = "RStudio", role = c("cph", "fnd")),
   person("Mike", "Bostock", role = c("cph"),
@@ -41,12 +42,12 @@ Imports: utils, jsonlite (>= 1.2), base64enc, yaml, config, magrittr,
         whisker, tidyselect, rlang, rstudioapi (>= 0.7), reticulate
 Suggests: testthat, knitr, withr, here, rmarkdown
 Encoding: UTF-8
-LazyData: true
-RoxygenNote: 7.1.1
+RoxygenNote: 7.2.1
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2021-02-25 13:47:57 UTC; dfalbel
-Author: Daniel Falbel [ctb, cre],
+Packaged: 2022-09-02 14:22:02 UTC; tomasz
+Author: Tomasz Kalinowski [ctb, cre],
+  Daniel Falbel [ctb],
   JJ Allaire [aut],
   RStudio [cph, fnd],
   Mike Bostock [cph] (D3 library - https://d3js.org/),
@@ -62,6 +63,6 @@ Author: Daniel Falbel [ctb, cre],
   Rodrigo Fernandes [cph] (diff2html library - https://diff2html.xyz/),
   Ivan Sagalaev [cph] (highlight.js library - https://highlightjs.org/),
   Yauheni Pakala [cph] (highlightjs-line-numbers library)
-Maintainer: Daniel Falbel <daniel@rstudio.com>
+Maintainer: Tomasz Kalinowski <tomasz@rstudio.com>
 Repository: CRAN
-Date/Publication: 2021-02-26 06:00:11 UTC
+Date/Publication: 2022-09-05 18:20:02 UTC
