@@ -1,6 +1,6 @@
-0497f12a35e8a1dcb12ff8a145e0a131 *DESCRIPTION
+8c0d22160fa5edc1f7e099d69f659064 *DESCRIPTION
 79b40e04472c9cf37c28f28ce22104e9 *NAMESPACE
-2a06072596e8f8c24ffeb91b44708c39 *NEWS.md
+757f1738f84e24d50f7e6e4ee8508802 *NEWS.md
 518129713af3a52fc77b50de26ccf1f1 *R/addin.R
 51e5be23be14af00f10baf6cbff96389 *R/clean_runs.R
 26a0cec4869dccbbf44ea0c6f1803556 *R/copy.R
@@ -11,11 +11,11 @@ ccf005a31964cce853b42dfdafb04a42 *R/metrics_viewer.R
 627fb6f0167a6da43895575cf61e8975 *R/reexports.R
 b731ea8fa0837bba60f95e825e2f08a0 *R/run_dir.R
 17819b51264390dcf03655a65cf50364 *R/run_metadata.R
-7d4a2106adc3dd024361b2b16a82cb05 *R/training_run.R
+21f8fdd2a088265a6965ee52f969392d *R/training_run.R
 47416d56609b38aa1ad0a16087a4778b *R/utils.R
 6e5e6330aa4adb4bdbbcff2e8018aec4 *R/views.R
 8fe631ee71acda88ad7946a2332d83d5 *README.md
-89420d610015e9af3fdb6f6d6c951770 *build/vignette.rds
+d7f7894fe7988f8b6ecc7c8c8cfe6356 *build/vignette.rds
 c5d0579e9c0a1304d5316e030c1bf8be *inst/doc/managing.R
 cd90d58c5226265871ebdd14e88e06e9 *inst/doc/managing.Rmd
 674d6804476f8885b129f33b6a56bc98 *inst/doc/managing.html
